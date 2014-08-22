@@ -1,0 +1,111 @@
+
+Practical Machine Learning Project
+========================================================
+
+Load and Preprocess the Data
+--------------------------------
+```{r loadData}
+
+setwd("~/Courses/Data Science track/Pratical Machine Learning/project")
+# load the csv
+
+rawdata <- read.csv("pml-training.csv", 
+                    na.strings=c("NA", "#DIV/0!", "", " "),
+                    colClasses="character" )
+for (i in 8:159) {
+    rawdata[,i] <- as.numeric( rawdata[, i])
+}
+rawdata[,160] <- as.factor(rawdata[,160])
+
+# all data frame nonnumeric columns can be factorized with 
+numericCols <- sapply(rawdata, is.numeric)
+rawdata[,!numericCols] <- lapply(rawdata[,!numericCols], factor)
+
+
+# the columns for row number, person name, timestamps and window 
+#  are of no use
+rawdata <- rawdata[, c(-1, -2, -3, -4, -5, -6, -7)]
+```
+
+Split the Data
+--------------------------------
+```{r splitData}
+
+library(caret, quietly=TRUE)
+library(randomForest)
+library(MASS)
+library(gbm)
+
+# slit the data into test/train/validation. Use 60/20/20 split.
+set.seed(62849)
+trainIndex <- createDataPartition(y=rawdata$classe, p = 0.60,list=FALSE)
+training <- rawdata[trainIndex,] # 60 percent of the objs
+
+temp <- rawdata[-trainIndex,] 
+trainIndex <- createDataPartition(y=temp$classe, p = 0.50,list=FALSE)
+testing <- temp[trainIndex,] # 20 percent of the objs
+validation <- temp[-trainIndex, ] # 20 percent of the objs
+```
+
+Pick features
+---------------
+```{r }
+set.seed(62849)
+
+# uses varience to reduce number of columns
+variences <- c()
+
+for (i in 1:153) {
+    v <- var(training[, i])
+    # if NA remove
+    if (is.na(v)) {
+        keepCol <- FALSE
+    }
+    # if varience less than 1 remove
+    else if (v <= 1.0) {
+        keepCol <- FALSE
+    }
+    # keep columns with enough variability
+    else {
+        keepCol <- TRUE
+    }
+    variences <- c(variences, keepCol)
+}
+# remove the low variability columns
+training <- training[, variences]
+
+```
+
+Random Forest:
+
+```{r tryRF,  cache=TRUE}
+trControlRF = trainControl(method = "cv", number = 10)
+modelFitRF <- train(classe ~., data=training, method="rf",
+                    trControl=trControlRF)
+
+predictionsRF <- predict(modelFitRF, newdata=testing)
+confusionMatrix(predictionsRF, testing$classe)
+
+```
+
+
+Boosting
+```{r tryBOOST,  cache=TRUE}
+trControlBOOST = trainControl(method = "cv", number = 10 )
+modelFitBOOST <- train(classe ~., data=training, method="gbm",
+                    trControl=trControlBOOST,
+                    verbose=FALSE)
+predictionsBOOST <- predict(modelFitBOOST, newdata=testing)
+confusionMatrix(predictionsBOOST, testing$classe)
+
+```
+
+Out of Sample Error rate (as a percentage)
+```{r errorRate}
+accurate <- (predictionsRF == validation$classe)
+outofsampleError <- round((sum(!accurate)/length(accurate) ) * 100, 
+                          digits=2)
+# report the out of sample error
+outofsampleError
+
+```
