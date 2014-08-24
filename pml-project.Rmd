@@ -2,13 +2,10 @@
 Practical Machine Learning Project
 ========================================================
 
-Load and Preprocess the Data
---------------------------------
-```{r loadData}
-
+### Load and Preprocess the Data
+```{r loadData, warning=FALSE}
 setwd("~/Courses/Data Science track/Pratical Machine Learning/project")
 # load the csv
-
 rawdata <- read.csv("pml-training.csv", 
                     na.strings=c("NA", "#DIV/0!", "", " "),
                     colClasses="character" )
@@ -20,23 +17,18 @@ rawdata[,160] <- as.factor(rawdata[,160])
 # all data frame nonnumeric columns can be factorized with 
 numericCols <- sapply(rawdata, is.numeric)
 rawdata[,!numericCols] <- lapply(rawdata[,!numericCols], factor)
-
-
-# the columns for row number, person name, timestamps and window 
-#  are of no use
-rawdata <- rawdata[, c(-1, -2, -3, -4, -5, -6, -7)]
 ```
 
-Split the Data
---------------------------------
-```{r splitData}
+### Split the Data
+* Split the data into test/train/validation sets. Use 60/20/20 split.
+```{r splitData, warning=FALSE, message=FALSE}
 
-library(caret, quietly=TRUE)
+library(caret)
 library(randomForest)
 library(MASS)
 library(gbm)
 
-# slit the data into test/train/validation. Use 60/20/20 split.
+# split the data into test/train/validation. Use 60/20/20 split.
 set.seed(62849)
 trainIndex <- createDataPartition(y=rawdata$classe, p = 0.60,list=FALSE)
 training <- rawdata[trainIndex,] # 60 percent of the objs
@@ -47,10 +39,14 @@ testing <- temp[trainIndex,] # 20 percent of the objs
 validation <- temp[-trainIndex, ] # 20 percent of the objs
 ```
 
-Pick features
----------------
-```{r }
+### Pick features
+* Remove row number, person name, timestamps and window as they are no use for prediction.
+* Further subset the predictors but removing columns that have low variability as they provide little use for prediction.
+```{r, warning=FALSE}
 set.seed(62849)
+# the columns for row number, person name, timestamps and window 
+#  are of no use
+training <- training[, c(-1, -2, -3, -4, -5, -6, -7)]
 
 # uses varience to reduce number of columns
 variences <- c()
@@ -73,39 +69,54 @@ for (i in 1:153) {
 }
 # remove the low variability columns
 training <- training[, variences]
-
 ```
 
-Random Forest:
+### Select two of the more popular Prediction algorithms and choose the one with the highest accuray. 
+* Train each method using the training data set, which is 60 percent of the data.
+* Test each method using the test data set, which is 20 percent of the data.
 
-```{r tryRF,  cache=TRUE}
+#### Random Forest:
+```{r tryRF,  cache=TRUE, warning=FALSE}
 trControlRF = trainControl(method = "cv", number = 10)
 modelFitRF <- train(classe ~., data=training, method="rf",
                     trControl=trControlRF)
 
 predictionsRF <- predict(modelFitRF, newdata=testing)
-confusionMatrix(predictionsRF, testing$classe)
-
+cfRF <- confusionMatrix(predictionsRF, testing$classe)
+```
+#### Accuracy for the Random Forest method
+``` {r}
+ cfRF$overall[1]
 ```
 
 
-Boosting
-```{r tryBOOST,  cache=TRUE}
+#### Boosting
+```{r tryBOOST,  cache=TRUE, warning=FALSE}
 trControlBOOST = trainControl(method = "cv", number = 10 )
 modelFitBOOST <- train(classe ~., data=training, method="gbm",
                     trControl=trControlBOOST,
                     verbose=FALSE)
 predictionsBOOST <- predict(modelFitBOOST, newdata=testing)
-confusionMatrix(predictionsBOOST, testing$classe)
-
+cfBOOST <- confusionMatrix(predictionsBOOST, testing$classe)
+```
+#### Accuracy for the Boosting method
+``` {r}
+ cfBOOST$overall[1]
 ```
 
-Out of Sample Error rate (as a percentage)
-```{r errorRate}
-accurate <- (predictionsRF == validation$classe)
-outofsampleError <- round((sum(!accurate)/length(accurate) ) * 100, 
-                          digits=2)
-# report the out of sample error
+### The Random Forest method has the best accuracy so it is the chosen Prediction algorithm.
+
+### Out of Sample Error (as a percentage)
+* Use the Validation data set, which is 20 percent of the data. 
+* The Validation data set was not used to train or evaluate the chosen model. 
+* Splitting the data this way is how **Cross Validation** is used to estimate the "Out of Sample Error".
+```{r errorRate, warning=FALSE}
+# use the Random Forest prdiction model.
+predictionsValidate <- predict(modelFitRF, newdata=validation)
+cf <- confusionMatrix(predictionsValidate, validation$classe)
+outofsampleError <- round( (1 - cf$overall[1]) * 100, 2)
+outofsampleError <- data.frame(OutOfSampleError= outofsampleError, row.names=1:length(outofsampleError))
 outofsampleError
-
 ```
+
+### The Out of Sample Error using Random Forest is less than 1%
